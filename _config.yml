@@ -23,7 +23,7 @@ email: uhenergy@hawaii.edu
 description: >- # this means to ignore newlines until "baseurl:"
 
 # !!! Change baseurl to the repo name otherwise it will load weird
-baseurl: "/Water-Test" # the subpath of your site, e.g. /blog 
+baseurl: "/Water-Dashboard" # the subpath of your site, e.g. /blog 
 url: "https://uhm-campus-energy.github.io" # the base hostname & protocol for your site, e.g. http://example.com
 
 # Build settings
