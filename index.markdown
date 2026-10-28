@@ -8,6 +8,8 @@ layout: home
 {% include quick-links.html %}
 {% include table-export.html %}
 
+<h1>UH Manoa Campus Data</h1>
+
 <div><strong>STARS Filter</strong></div>
 <div id="stars-filter">
   <label><input type="radio" name="stars-filter" value="stars"> Only STARS</label>

@@ -28,9 +28,10 @@ url: "https://uhm-campus-energy.github.io" # the base hostname & protocol for yo
 
 # Build settings
 theme: minima
-# Pages listed in the navbar. Graphs and Comparison are only linked from the quick links box.
+# Pages listed in the navbar
+# Graphs and Comparison are only linked from the quick links box.
 header_pages:
-  - about.markdown
+  - all_campuses.markdown
 plugins:
   - jekyll-feed
 
