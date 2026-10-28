@@ -42,11 +42,25 @@ permalink: /AllCampuses/
     padding: 1em 0;
     color: #6b7280;
   }
+  #fiscal-year-table {
+    border-collapse: collapse;
+    margin: 1em 0;
+  }
+  #fiscal-year-table th,
+  #fiscal-year-table td {
+    padding: .4em .8em;
+    text-align: right;
+  }
+  #fiscal-year-table th:first-child,
+  #fiscal-year-table td:first-child {
+    text-align: left;
+  }
+  #fiscal-year-table tbody tr:nth-child(even) {
+    background: #f3f4f6;
+  }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
-
-{% include quick-links.html %}
 
 <h2>Monthly Water Usage by Campus</h2>
 <p>Select a campus to view its monthly water usage.</p>
@@ -54,12 +68,28 @@ permalink: /AllCampuses/
 <div id="campus-chart-message" role="status">Loading campus data...</div>
 <div id="campus-chart" aria-label="Monthly water usage line graph"></div>
 
+<h2 id="fiscal-year-heading">Fiscal Year Summary</h2>
+<table id="fiscal-year-table">
+  <thead>
+    <tr>
+      <th>Fiscal Year</th>
+      <th>Usage (thousand gallons)</th>
+      <th>Water Charges</th>
+      <th>Sewer Charges</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
 <script>
   (() => {
     const picker = document.getElementById("campus-picker");
     const chart = document.getElementById("campus-chart");
     const message = document.getElementById("campus-chart-message");
+    const fiscalHeading = document.getElementById("fiscal-year-heading");
+    const fiscalTableBody = document.querySelector("#fiscal-year-table tbody");
     const campusData = {};
+    const fiscalData = {};
     let selectedCampus;
 
     function parseCSV(text) {
@@ -88,6 +118,22 @@ permalink: /AllCampuses/
       return parsed.toISOString().slice(0, 7);
     }
 
+    function parseAmount(value) {
+      const amount = Number((value || "").replace(/[$,]/g, ""));
+      return Number.isFinite(amount) ? amount : 0;
+    }
+
+    function formatNumber(value) {
+      return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+    }
+
+    function formatCurrency(value) {
+      return value.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD"
+      });
+    }
+
     function renderChart() {
       const records = campusData[selectedCampus] || [];
       const x = records.map(record => record.month);
@@ -109,6 +155,27 @@ permalink: /AllCampuses/
       }, { responsive: true, displaylogo: false });
     }
 
+    function renderFiscalYearTable() {
+      const records = fiscalData[selectedCampus] || {};
+      fiscalHeading.textContent = selectedCampus + " fiscal year summary";
+      fiscalTableBody.replaceChildren();
+      Object.keys(records).sort().reverse().forEach(fiscalYear => {
+        const record = records[fiscalYear];
+        const row = document.createElement("tr");
+        [
+          fiscalYear.toUpperCase(),
+          formatNumber(record.usage),
+          formatCurrency(record.water),
+          formatCurrency(record.sewer)
+        ].forEach(value => {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.append(cell);
+        });
+        fiscalTableBody.append(row);
+      });
+    }
+
     function renderPicker(campuses) {
       campuses.forEach((campus, index) => {
         const label = document.createElement("label");
@@ -120,6 +187,7 @@ permalink: /AllCampuses/
         input.addEventListener("change", () => {
           selectedCampus = input.value;
           renderChart();
+          renderFiscalYearTable();
         });
         label.append(input, campus);
         picker.append(label);
@@ -139,7 +207,11 @@ permalink: /AllCampuses/
         const campusIndex = header.indexOf("campus");
         const dateIndex = header.indexOf("date");
         const usageIndex = header.indexOf("thousands_gal");
-        if ([campusIndex, dateIndex, usageIndex].some(index => index < 0)) {
+        const waterChargesIndex = header.indexOf("water_charges");
+        const sewerChargesIndex = header.indexOf("sewer_charges");
+        const fiscalYearIndex = header.indexOf("fiscal_year");
+        if ([campusIndex, dateIndex, usageIndex, waterChargesIndex, sewerChargesIndex, fiscalYearIndex]
+          .some(index => index < 0)) {
           throw new Error("Campus water data is missing a required column.");
         }
 
@@ -147,9 +219,17 @@ permalink: /AllCampuses/
           const campus = (row[campusIndex] || "").trim();
           const month = monthKey(row[dateIndex]);
           const usage = Number((row[usageIndex] || "").replace(/,/g, ""));
-          if (!campus || !month || !Number.isFinite(usage)) return;
+          const fiscalYear = (row[fiscalYearIndex] || "").trim().toLowerCase();
+          if (!campus || !month || !fiscalYear || !Number.isFinite(usage)) return;
           campusData[campus] = campusData[campus] || {};
           campusData[campus][month] = (campusData[campus][month] || 0) + usage;
+          fiscalData[campus] = fiscalData[campus] || {};
+          fiscalData[campus][fiscalYear] = fiscalData[campus][fiscalYear] || {
+            usage: 0, water: 0, sewer: 0
+          };
+          fiscalData[campus][fiscalYear].usage += usage;
+          fiscalData[campus][fiscalYear].water += parseAmount(row[waterChargesIndex]);
+          fiscalData[campus][fiscalYear].sewer += parseAmount(row[sewerChargesIndex]);
         });
 
         const campuses = Object.keys(campusData).sort();
@@ -162,6 +242,7 @@ permalink: /AllCampuses/
         renderPicker(campuses);
         message.textContent = "";
         renderChart();
+        renderFiscalYearTable();
       })
       .catch(error => {
         message.textContent = "Unable to load campus water data: " + error.message;
