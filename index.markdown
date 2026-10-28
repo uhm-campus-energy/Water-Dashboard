@@ -8,15 +8,14 @@ layout: home
 {% include quick-links.html %}
 {% include table-export.html %}
 
-<h1>UH Manoa Campus Data</h1>
+<h1>UH Manoa Summary</h1>
 
 <div><strong>STARS Filter</strong></div>
 <div id="stars-filter">
   <label><input type="radio" name="stars-filter" value="stars"> Only STARS</label>
   <label><input type="radio" name="stars-filter" value="all" checked> Every Account</label>
 </div>
-<h1>Summary for a specific fiscal year</h1>
-<div>Select a fiscal year</div>
+<div><strong>Select a fiscal year</strong></div>
 <div id="fy-options"></div>
 <style>
   .stat-box {

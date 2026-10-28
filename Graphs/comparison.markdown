@@ -69,6 +69,8 @@ title:  "Comparison"
 {% include quick-links.html %}
 {% include table-export.html %}
 
+<h1>UH Manoa Usage</h1>
+
 <div id="stars-filter-control">
   <div><strong>STARS Filter</strong></div>
   <div id="stars-filter">

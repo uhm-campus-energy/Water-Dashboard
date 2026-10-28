@@ -68,6 +68,8 @@ title:  "Account Charge Comparison"
 {% include quick-links.html %}
 {% include table-export.html %}
 
+<h1>UH Manoa Water/Sewer Costs</h1>
+
 <div id="charge-type-control">
   <div><strong>Charge Type</strong></div>
   <div id="charge-type">

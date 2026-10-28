@@ -42,6 +42,21 @@ permalink: /AllCampuses/
     padding: 1em 0;
     color: #6b7280;
   }
+  #cost-toggle {
+    margin: .5em 0 0;
+    padding: .45em .9em;
+    border: 1px solid #6b7280;
+    border-radius: 6px;
+    background: #f9fafb;
+    cursor: pointer;
+    font: inherit;
+  }
+  #cost-toggle[aria-pressed="true"] {
+    border-color: #b45309;
+    background: #fef3c7;
+    color: #78350f;
+    font-weight: 600;
+  }
   #fiscal-year-table {
     border-collapse: collapse;
     margin: 1em 0;
@@ -65,6 +80,7 @@ permalink: /AllCampuses/
 <h2>Monthly Water Usage by Campus</h2>
 <p>Select a campus to view its monthly water usage.</p>
 <div id="campus-picker" role="radiogroup" aria-label="Select campus"></div>
+<button id="cost-toggle" type="button" aria-pressed="false">Show total cost</button>
 <div id="campus-chart-message" role="status">Loading campus data...</div>
 <div id="campus-chart" aria-label="Monthly water usage line graph"></div>
 
@@ -86,9 +102,11 @@ permalink: /AllCampuses/
     const picker = document.getElementById("campus-picker");
     const chart = document.getElementById("campus-chart");
     const message = document.getElementById("campus-chart-message");
+    const costToggle = document.getElementById("cost-toggle");
     const fiscalHeading = document.getElementById("fiscal-year-heading");
     const fiscalTableBody = document.querySelector("#fiscal-year-table tbody");
     const campusData = {};
+    const monthlyCostData = {};
     const fiscalData = {};
     let selectedCampus;
 
@@ -138,7 +156,7 @@ permalink: /AllCampuses/
       const records = campusData[selectedCampus] || [];
       const x = records.map(record => record.month);
       const y = records.map(record => record.usage);
-      Plotly.react(chart, [{
+      const traces = [{
         x,
         y,
         type: "scatter",
@@ -146,10 +164,32 @@ permalink: /AllCampuses/
         line: { color: "#2563eb", width: 2 },
         marker: { color: "#2563eb", size: 6 },
         hovertemplate: "%{x|%B %Y}<br>%{y:,.0f} thousand gallons<extra></extra>"
-      }], {
+      }];
+      if (costToggle.getAttribute("aria-pressed") === "true") {
+        const costRecords = monthlyCostData[selectedCampus] || [];
+        traces.push({
+          x: costRecords.map(record => record.month),
+          y: costRecords.map(record => record.cost),
+          type: "scatter",
+          mode: "lines+markers",
+          name: "Total cost",
+          yaxis: "y2",
+          line: { color: "#d97706", width: 2 },
+          marker: { color: "#d97706", size: 6 },
+          hovertemplate: "%{x|%B %Y}<br>$%{y:,.2f}<extra>Total cost</extra>"
+        });
+      }
+      Plotly.react(chart, traces, {
         title: selectedCampus + " monthly water usage",
         xaxis: { title: "Month", type: "date" },
         yaxis: { title: "Usage (thousand gallons)", rangemode: "tozero" },
+        yaxis2: {
+          title: "Total cost (USD)",
+          overlaying: "y",
+          side: "right",
+          rangemode: "tozero",
+          showgrid: false
+        },
         margin: { t: 60, r: 20, b: 70, l: 75 },
         hovermode: "x unified"
       }, { responsive: true, displaylogo: false });
@@ -195,6 +235,13 @@ permalink: /AllCampuses/
       selectedCampus = campuses[0];
     }
 
+    costToggle.addEventListener("click", () => {
+      const isPressed = costToggle.getAttribute("aria-pressed") === "true";
+      costToggle.setAttribute("aria-pressed", String(!isPressed));
+      costToggle.textContent = isPressed ? "Show total cost" : "Hide total cost";
+      renderChart();
+    });
+
     fetch("{{ '/campus_water.csv' | relative_url }}")
       .then(response => {
         if (!response.ok) throw new Error("Campus water data could not be loaded.");
@@ -223,6 +270,9 @@ permalink: /AllCampuses/
           if (!campus || !month || !fiscalYear || !Number.isFinite(usage)) return;
           campusData[campus] = campusData[campus] || {};
           campusData[campus][month] = (campusData[campus][month] || 0) + usage;
+          monthlyCostData[campus] = monthlyCostData[campus] || {};
+          monthlyCostData[campus][month] = (monthlyCostData[campus][month] || 0)
+            + parseAmount(row[waterChargesIndex]) + parseAmount(row[sewerChargesIndex]);
           fiscalData[campus] = fiscalData[campus] || {};
           fiscalData[campus][fiscalYear] = fiscalData[campus][fiscalYear] || {
             usage: 0, water: 0, sewer: 0
@@ -238,6 +288,9 @@ permalink: /AllCampuses/
           campusData[campus] = Object.entries(campusData[campus])
             .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
             .map(([month, usage]) => ({ month, usage }));
+          monthlyCostData[campus] = Object.entries(monthlyCostData[campus] || {})
+            .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
+            .map(([month, cost]) => ({ month, cost }));
         });
         renderPicker(campuses);
         message.textContent = "";

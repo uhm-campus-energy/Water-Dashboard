@@ -70,6 +70,8 @@ title:  "Charge Comparison"
 {% include quick-links.html %}
 {% include table-export.html %}
 
+<h1>UH Manoa Water/Sewer Costs</h1>
+
 <div id="stars-filter-control">
   <div>
     <div><strong>STARS Filter</strong></div>

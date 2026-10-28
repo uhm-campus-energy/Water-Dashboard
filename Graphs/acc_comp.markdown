@@ -58,7 +58,7 @@ title:  "Account Comparison"
 {% include quick-links.html %}
 {% include table-export.html %}
 
-<h3 id="usage-heading">Account Water Usage Comparison</h3>
+<h3 id="usage-heading">UH Manoa Account Water Usage Comparison</h3>
 <div id="fy-float">
   <button id="fy-toggle" type="button" aria-expanded="false" aria-controls="usage-fy">Select FY</button>
   <div id="fy-title"><strong>Fiscal year</strong></div>
