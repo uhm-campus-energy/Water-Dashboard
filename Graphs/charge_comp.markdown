@@ -483,7 +483,7 @@ title:  "Charge Comparison"
     });
   }
 
-  fetch("{{ '/water_view.csv' | relative_url }}")
+  fetch("{{ '/Data/water_view_new.csv' | relative_url }}")
     .then(r => r.text())
     .then(text => {
       const rows = parseCSV(text);

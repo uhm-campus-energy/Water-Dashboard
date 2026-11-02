@@ -276,12 +276,12 @@ title:  "Account Comparison"
     });
   }
 
-  fetch("{{ '/water_view.csv' | relative_url }}")
+  fetch("{{ '/Data/water_view_new.csv' | relative_url }}")
     .then(r => r.text())
     .then(text => {
       const rows = parseCSV(text);
       const header = rows[0];
-      const gi = header.indexOf("thousands_gal");
+      const gi = header.indexOf("water_usage");
       const fi = header.indexOf("fiscal_year");
       const di = header.indexOf("date");
       const ai = header.indexOf("description");
