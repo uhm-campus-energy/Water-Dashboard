@@ -1,7 +1,4 @@
 ---
-# Feel free to add content and custom Front Matter to this file.
-# To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
-
 layout: home
 ---
 
@@ -19,7 +16,7 @@ layout: home
 <div id="fy-options"></div>
 <style>
   .stat-box {
-    display: inline-block; margin: 1em 0; padding: 12px 20px;
+    display: inline-block; margin: 1em 1em 1em 0; padding: 12px 20px;
     background: #eef4fb; border: 1px solid #c5d9ee; border-left: 5px solid #2a6fb0;
     border-radius: 6px;
   }
@@ -30,6 +27,10 @@ layout: home
 <div class="stat-box">
   <div class="stat-label">Total Water Usage</div>
   <div class="stat-value" id="fy-total">Loading...</div>
+</div>
+<div class="stat-box">
+  <div class="stat-label">Total Sewer Usage</div>
+  <div class="stat-value" id="fy-sewer-total">Loading...</div>
 </div>
 
 <table id="cost-table">
@@ -71,10 +72,11 @@ layout: home
   }
 
   const datasets = {
-    stars: { totals: {}, costs: {}, byAcct: {} },
-    all: { totals: {}, costs: {}, byAcct: {} }
+    stars: { totals: {}, sewerTotals: {}, costs: {}, byAcct: {} },
+    all: { totals: {}, sewerTotals: {}, costs: {}, byAcct: {} }
   };
   const totalEl = document.getElementById("fy-total");
+  const sewerTotalEl = document.getElementById("fy-sewer-total");
   const money = v => v.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
   // "$1,234.56" -> 1234.56, "-$2.00" -> -2, blank -> 0
@@ -87,6 +89,8 @@ layout: home
     const dataset = datasets[document.querySelector('input[name="stars-filter"]:checked').value];
     const sum = dataset.totals[fy] || 0;
     totalEl.textContent = sum.toLocaleString();
+    const sewerSum = dataset.sewerTotals[fy] || 0;
+    sewerTotalEl.textContent = sewerSum.toLocaleString();
 
     const c = dataset.costs[fy] || { water: 0, sewer: 0 };
     document.getElementById("cost-water").textContent = money(c.water);
@@ -140,6 +144,7 @@ layout: home
       const rows = parseCSV(text);
       const header = rows[0];
       const gi = header.indexOf("water_usage");
+      const sgi = header.indexOf("sewer_usage");
       const fi = header.indexOf("fiscal_year");
       const di = header.indexOf("description");
       const wi = header.indexOf("water_charges_adjusted");
@@ -150,6 +155,7 @@ layout: home
         if (!fy) continue;
         const desc = (r[di] || "").trim();
         const gal = parseFloat((r[gi] || "").replace(/,/g, ""));
+        const sewerGal = parseFloat((r[sgi] || "").replace(/,/g, ""));
         const isStars = (r[sti] || "").trim() !== "0";
         const targets = isStars ? [datasets.all, datasets.stars] : [datasets.all];
         targets.forEach(dataset => {
@@ -166,6 +172,9 @@ layout: home
             dataset.totals[fy] = (dataset.totals[fy] || 0) + gal;
             if (desc) dataset.byAcct[fy][desc].usage += gal;
           }
+          if (!isNaN(sewerGal)) {
+            dataset.sewerTotals[fy] = (dataset.sewerTotals[fy] || 0) + sewerGal;
+          }
         });
       }
       buildOptions();
@@ -179,5 +188,8 @@ layout: home
       });
       render();
     })
-    .catch(() => { totalEl.textContent = "Failed to load data"; });
+    .catch(() => {
+      totalEl.textContent = "Failed to load data";
+      sewerTotalEl.textContent = "Failed to load data";
+    });
 </script>
