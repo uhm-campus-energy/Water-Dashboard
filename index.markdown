@@ -33,6 +33,8 @@ layout: home
   <div class="stat-value" id="fy-sewer-total">Loading...</div>
 </div>
 
+<!-- text in cost-heading doesn't matter only changed in render() at costHeadingEl.textContent -->
+<h2 id="cost-heading">FY ## Total Charges</h2> 
 <table id="cost-table">
   <thead><tr><th>Charges</th><th>Total</th></tr></thead>
   <tbody>
@@ -42,7 +44,9 @@ layout: home
   </tbody>
 </table>
 
-<h2>Top 10 customers by water + sewer charges</h2>
+<!-- text in top-heading doesn't matter only changed in render() at topHeadingEl.textContent -->
+<h2 id="top-heading">FY ## - Top 10 Customers</h2>
+<p>Sorted by adding water and sewer charges</p>
 <table id="top-table">
   <thead><tr><th>#</th><th>Account</th><th>Usage (kgals)</th><th>Water</th><th>Sewer</th><th>Total</th></tr></thead>
   <tbody></tbody>
@@ -77,6 +81,9 @@ layout: home
   };
   const totalEl = document.getElementById("fy-total");
   const sewerTotalEl = document.getElementById("fy-sewer-total");
+  const costHeadingEl = document.getElementById("cost-heading");
+  const topHeadingEl = document.getElementById("top-heading");
+  
   const money = v => v.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
   // "$1,234.56" -> 1234.56, "-$2.00" -> -2, blank -> 0
@@ -87,6 +94,12 @@ layout: home
     if (!fyInput) return;
     const fy = fyInput.value;
     const dataset = datasets[document.querySelector('input[name="stars-filter"]:checked').value];
+
+    // Put the selected fiscal year (e.g. "FY25") into the section headings.
+    const fyName = fy.toUpperCase();
+    costHeadingEl.textContent = fyName + " Total Charges";
+    topHeadingEl.textContent = fyName + " - Top 10 Customers";
+
     const sum = dataset.totals[fy] || 0;
     totalEl.textContent = sum.toLocaleString();
     const sewerSum = dataset.sewerTotals[fy] || 0;

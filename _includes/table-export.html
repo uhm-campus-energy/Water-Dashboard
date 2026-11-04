@@ -5,22 +5,47 @@
   (() => {
     const clean = s => (s || "").replace(/\s+/g, " ").trim();
 
-    function nameFor(table) {
+    // The table's title (goes in cell A1): the nearest heading above it (or above its
+    // <details> wrapper), falling back to the <summary> text, then the table's id.
+    function titleFor(table) {
       let node = table.closest("details");
       const summary = node && node.querySelector("summary");
       let heading = null;
       for (let el = (node || table).previousElementSibling; el && !heading; el = el.previousElementSibling) {
         if (/^H[1-6]$/.test(el.tagName) && clean(el.textContent)) heading = clean(el.textContent);
       }
-      const base = heading || (summary && clean(summary.textContent)) || table.id || "Table";
-      return base.replace(/[\\\/?*\[\]:]/g, "").slice(0, 31) || "Table";
+      return heading || (summary && clean(summary.textContent)) || table.id || "Table";
+    }
+
+    // The text used for the file name and sheet tab. A table can set a shorter one with
+    // data-export-name="..." (e.g. "FY27 Top 10 customers"); otherwise it's the title.
+    function exportNameFor(table) {
+      return clean(table.dataset.exportName) || titleFor(table);
+    }
+
+    // Excel sheet names can't contain \ / ? * [ ] : and are limited to 31 characters.
+    function sheetNameFor(table) {
+      return exportNameFor(table).replace(/[\\\/?*\[\]:]/g, "").slice(0, 31) || "Table";
     }
 
     function download(table) {
       if (!table.rows.length) { alert("There is no data in this table yet."); return; }
-      const sheet = nameFor(table);
-      const wb = XLSX.utils.table_to_book(table, { sheet: sheet });
-      XLSX.writeFile(wb, sheet.replace(/[^\w]+/g, "_") + ".xlsx");
+      const title = titleFor(table);
+      const sheet = sheetNameFor(table);
+
+      // Start the table one row down (A2) so row 1 is free for the title.
+      const ws = XLSX.utils.table_to_sheet(table, { origin: "A2" });
+      ws["A1"] = { t: "s", v: title };
+      // Make sure the sheet's range includes the new A1 cell.
+      const range = XLSX.utils.decode_range(ws["!ref"]);
+      range.s.r = 0;
+      range.s.c = 0;
+      ws["!ref"] = XLSX.utils.encode_range(range);
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheet);
+      // The file name uses the full export name, not the 31-character sheet name.
+      XLSX.writeFile(wb, exportNameFor(table).replace(/[^\w]+/g, "_") + ".xlsx");
     }
 
     function addButtons() {

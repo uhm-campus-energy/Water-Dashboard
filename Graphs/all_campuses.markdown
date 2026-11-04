@@ -124,6 +124,7 @@ permalink: /AllCampuses/
   }
 </style>
 
+{% include quick-links.html %}
 {% include table-export.html %}
 
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
@@ -166,15 +167,18 @@ permalink: /AllCampuses/
     const sewerToggle = document.getElementById("sewer-toggle");
     const costToggle = document.getElementById("cost-toggle");
     const fiscalHeading = document.getElementById("fiscal-year-heading");
+    const fiscalTableHead = document.querySelector("#fiscal-year-table thead");
     const fiscalTableBody = document.querySelector("#fiscal-year-table tbody");
     const fyFloat = document.getElementById("fy-float");
     const fyToggle = document.getElementById("fy-toggle");
     const fyContainer = document.getElementById("campus-fy");
+    // Monthly totals are stored as store[campus][fiscalYear][month] = value, so every
+    // month stays tied to the fiscal year of the row it came from.
     const campusWaterData = {};
     const campusSewerData = {};
-    const monthlyCostData = {};
+    const monthlyWaterCostData = {};
+    const monthlySewerCostData = {};
     const fiscalData = {};
-    const monthFY = {}; // "2024-07" -> "fy25"
     let selectedCampus;
 
     function parseCSV(text) {
@@ -219,14 +223,40 @@ permalink: /AllCampuses/
       });
     }
 
-    // Fiscal years currently checked, oldest first so the order is stable.
+    // Add an amount to store[campus][fiscalYear][month].
+    function addMonthly(store, campus, fiscalYear, month, amount) {
+      store[campus] = store[campus] || {};
+      store[campus][fiscalYear] = store[campus][fiscalYear] || {};
+      store[campus][fiscalYear][month] = (store[campus][fiscalYear][month] || 0) + amount;
+    }
+
+    // The selected campus's months for the given fiscal years, oldest first: [{ month, value }].
+    // Pass one store, or an array of stores to add them together (e.g. water + sewer charges).
+    function monthlySeries(stores, fys) {
+      const byMonth = {};
+      (Array.isArray(stores) ? stores : [stores]).forEach(store => {
+        const byFY = store[selectedCampus] || {};
+        fys.forEach(fy => {
+          Object.entries(byFY[fy] || {}).forEach(([month, value]) => {
+            byMonth[month] = (byMonth[month] || 0) + value;
+          });
+        });
+      });
+      return Object.entries(byMonth)
+        .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
+        .map(([month, value]) => ({ month, value }));
+    }
+
+    // The selected bubble: one fiscal year, or every fiscal year this campus has data for.
     function selectedFYs() {
-      return [...document.querySelectorAll('input[name="campus-fy"]:checked')].map(i => i.value).sort();
+      const chosen = document.querySelector('input[name="campus-fy"]:checked');
+      if (!chosen) return [];
+      return chosen.value === "all" ? campusFYs() : [chosen.value];
     }
 
     // Only the fiscal years that have data for the selected campus, oldest first.
     // A year counts only if it has some non-zero usage or charges, so blank or
-    // all-zero placeholder rows in the CSV don't add a checkbox.
+    // all-zero placeholder rows in the CSV don't add a bubble.
     function campusFYs() {
       const records = fiscalData[selectedCampus] || {};
       return Object.keys(records)
@@ -245,13 +275,13 @@ permalink: /AllCampuses/
         return;
       }
       message.textContent = "";
-      const inSelectedFY = record => fys.includes(monthFY[record.month]);
+      let costAxisRange;
 
-      const waterRecords = (campusWaterData[selectedCampus] || []).filter(inSelectedFY);
+      const waterRecords = monthlySeries(campusWaterData, fys);
       const traces = [
         {
           x: waterRecords.map(record => record.month),
-          y: waterRecords.map(record => record.usage),
+          y: waterRecords.map(record => record.value),
           type: "scatter",
           mode: "lines+markers",
           name: "Water usage",
@@ -262,10 +292,10 @@ permalink: /AllCampuses/
       ];
 
       if (sewerToggle.getAttribute("aria-pressed") === "true") {
-        const sewerRecords = (campusSewerData[selectedCampus] || []).filter(inSelectedFY);
+        const sewerRecords = monthlySeries(campusSewerData, fys);
         traces.push({
           x: sewerRecords.map(record => record.month),
-          y: sewerRecords.map(record => record.usage),
+          y: sewerRecords.map(record => record.value),
           type: "scatter",
           mode: "lines+markers",
           name: "Sewer usage",
@@ -276,17 +306,30 @@ permalink: /AllCampuses/
       }
 
       if (costToggle.getAttribute("aria-pressed") === "true") {
-        const costRecords = (monthlyCostData[selectedCampus] || []).filter(inSelectedFY);
+        // Water charges only, unless sewer usage is on the graph: then water + sewer charges.
+        const showSewer = sewerToggle.getAttribute("aria-pressed") === "true";
+        const costLabel = showSewer ? "Monthly cost (water + sewer)" : "Monthly cost (water)";
+        const costRecords = monthlySeries(
+          showSewer ? [monthlyWaterCostData, monthlySewerCostData] : [monthlyWaterCostData], fys);
+        // Fix the cost axis using both water-only and water + sewer values, so it
+        // doesn't rescale when sewer usage is toggled on or off.
+        const waterOnlyValues = monthlySeries([monthlyWaterCostData], fys).map(r => r.value);
+        const combinedValues = monthlySeries([monthlyWaterCostData, monthlySewerCostData], fys).map(r => r.value);
+        const allCostValues = [0, ...waterOnlyValues, ...combinedValues];
+        const costLow = Math.min(...allCostValues);
+        const costHigh = Math.max(...allCostValues);
+        const costPad = (costHigh - costLow) * 0.05 || 1;
+        costAxisRange = [costLow < 0 ? costLow - costPad : 0, costHigh + costPad];
         traces.push({
           x: costRecords.map(record => record.month),
-          y: costRecords.map(record => record.cost),
+          y: costRecords.map(record => record.value),
           type: "scatter",
           mode: "lines+markers",
-          name: "Monthly cost",
+          name: costLabel,
           yaxis: "y2",
           line: { color: "#d97706", width: 2 },
           marker: { color: "#d97706", size: 6 },
-          hovertemplate: "$%{y:,.2f}<extra>Monthly cost</extra>"
+          hovertemplate: "$%{y:,.2f}<extra>" + costLabel + "</extra>"
         });
       }
 
@@ -295,32 +338,40 @@ permalink: /AllCampuses/
         xaxis: { title: "Month", type: "date", hoverformat: "%B %Y" },
         yaxis: { title: "Usage (thousand gallons)", rangemode: "tozero" },
         yaxis2: {
-          title: "Monthly cost (USD)",
+          title: {text: "Monthly charges (USD)", standoff: 10},
           overlaying: "y",
           side: "right",
           rangemode: "tozero",
-          showgrid: false
+          showgrid: false,
+          automargin: true,
+          ...(costAxisRange ? { range: costAxisRange } : {})
         },
-        margin: { t: 60, r: 20, b: 70, l: 75 },
+        legend: { orientation: "h", x: 0.5, xanchor: "center", y: -0.25, yanchor: "top" },
+        margin: { t: 60, r: 20, b: 110, l: 75 },
         hovermode: "x unified"
       }, { responsive: true, displaylogo: false });
     }
 
-    function renderFiscalYearTable() {
-      const fys = selectedFYs();
-      const records = fiscalData[selectedCampus] || {};
-      fiscalHeading.textContent = selectedCampus + " fiscal year summary";
+    // Fill the summary table: a header row, then one row of cell values per entry in rows.
+    function setSummaryTable(firstColumn, rows) {
+      const headRow = document.createElement("tr");
+      [
+        firstColumn,
+        "Water Usage (thousand gallons)",
+        "Sewer Usage (thousand gallons)",
+        "Water Charges",
+        "Sewer Charges"
+      ].forEach(text => {
+        const th = document.createElement("th");
+        th.textContent = text;
+        headRow.append(th);
+      });
+      fiscalTableHead.replaceChildren(headRow);
+
       fiscalTableBody.replaceChildren();
-      Object.keys(records).filter(fy => fys.includes(fy)).sort().reverse().forEach(fiscalYear => {
-        const record = records[fiscalYear];
+      rows.forEach(values => {
         const row = document.createElement("tr");
-        [
-          fiscalYear.toUpperCase(),
-          formatNumber(record.waterUsage),
-          formatNumber(record.sewerUsage),
-          formatCurrency(record.water),
-          formatCurrency(record.sewer)
-        ].forEach(value => {
+        values.forEach(value => {
           const cell = document.createElement("td");
           cell.textContent = value;
           row.append(cell);
@@ -329,44 +380,81 @@ permalink: /AllCampuses/
       });
     }
 
+    // "2025-07" -> "Jul 2025"
+    function formatMonth(month) {
+      return new Date(month + "-01").toLocaleDateString("en-US", {
+        month: "short", year: "numeric", timeZone: "UTC"
+      });
+    }
+
+    // One fiscal year selected: a row per month. "All" selected: a row per fiscal year.
+    function renderFiscalYearTable() {
+      const chosen = document.querySelector('input[name="campus-fy"]:checked');
+      const fys = selectedFYs();
+
+      if (chosen && chosen.value !== "all" && fys.length === 1) {
+        const fy = fys[0];
+        const monthsOf = store => (store[selectedCampus] || {})[fy] || {};
+        const water = monthsOf(campusWaterData);
+        const sewer = monthsOf(campusSewerData);
+        const waterCharges = monthsOf(monthlyWaterCostData);
+        const sewerCharges = monthsOf(monthlySewerCostData);
+        const months = [...new Set([
+          ...Object.keys(water), ...Object.keys(sewer),
+          ...Object.keys(waterCharges), ...Object.keys(sewerCharges)
+        ])].sort();
+
+        fiscalHeading.textContent = selectedCampus + " " + fy.toUpperCase() + " monthly summary";
+        setSummaryTable("Month", months.map(month => [
+          formatMonth(month),
+          formatNumber(water[month] || 0),
+          formatNumber(sewer[month] || 0),
+          formatCurrency(waterCharges[month] || 0),
+          formatCurrency(sewerCharges[month] || 0)
+        ]));
+        return;
+      }
+
+      const records = fiscalData[selectedCampus] || {};
+      fiscalHeading.textContent = selectedCampus + " fiscal year summary";
+      setSummaryTable("Fiscal Year", Object.keys(records)
+        .filter(fy => fys.includes(fy)).sort().reverse()
+        .map(fiscalYear => [
+          fiscalYear.toUpperCase(),
+          formatNumber(records[fiscalYear].waterUsage),
+          formatNumber(records[fiscalYear].sewerUsage),
+          formatCurrency(records[fiscalYear].water),
+          formatCurrency(records[fiscalYear].sewer)
+        ]));
+    }
+
     function renderAll() {
       renderChart();
       renderFiscalYearTable();
     }
 
-    // One checkbox per fiscal year that has data for the selected campus, newest first.
-    // Years that were already checked stay checked when switching campuses; if none of them
-    // exist for the new campus, the newest two start checked.
+    // One bubble (radio button) for "All" plus one per fiscal year that has data for the
+    // selected campus, newest first. When switching campuses the current choice is kept if
+    // the new campus has it ("All" always carries over); otherwise the newest year is selected.
     function buildFYOptions() {
       const available = campusFYs();
-      const kept = selectedFYs().filter(fy => available.includes(fy));
-      const checked = kept.length ? kept : available.slice(-2);
+      const previous = document.querySelector('input[name="campus-fy"]:checked');
+      const previousValue = previous ? previous.value : null;
+      const selected = previousValue === "all" || available.includes(previousValue)
+        ? previousValue
+        : available[available.length - 1];
       fyContainer.replaceChildren();
 
-      // "All" checks or clears every year; it is checked whenever every year is checked.
-      // It has its own name so selectedFYs() doesn't count it as a fiscal year.
-      const allLabel = document.createElement("label");
-      const allInput = document.createElement("input");
-      allInput.type = "checkbox"; allInput.name = "campus-fy-all";
-      allLabel.append(allInput, " All");
-      fyContainer.append(allLabel);
-      const yearInputs = () => [...fyContainer.querySelectorAll('input[name="campus-fy"]')];
-      const syncAll = () => { allInput.checked = yearInputs().every(i => i.checked); };
-      allInput.addEventListener("change", () => {
-        yearInputs().forEach(i => { i.checked = allInput.checked; });
-        renderAll();
-      });
-
-      available.slice().reverse().forEach(fy => {
+      const options = available.length ? ["all", ...available.slice().reverse()] : [];
+      options.forEach(value => {
         const label = document.createElement("label");
         const input = document.createElement("input");
-        input.type = "checkbox"; input.name = "campus-fy"; input.value = fy;
-        input.checked = checked.includes(fy);
-        input.addEventListener("change", () => { syncAll(); renderAll(); });
-        label.append(input, " " + fy.toUpperCase());
+        input.type = "radio"; input.name = "campus-fy"; input.value = value;
+        input.checked = value === selected;
+        input.addEventListener("change", renderAll);
+        label.append(input, " " + (value === "all" ? "All" : value.toUpperCase()));
         fyContainer.append(label);
       });
-      syncAll();
     }
 
     function renderPicker(campuses) {
@@ -398,7 +486,7 @@ permalink: /AllCampuses/
     costToggle.addEventListener("click", () => {
       const isPressed = costToggle.getAttribute("aria-pressed") === "true";
       costToggle.setAttribute("aria-pressed", String(!isPressed));
-      costToggle.textContent = isPressed ? "Show total cost" : "Hide total cost";
+      costToggle.textContent = isPressed ? "Show monthly charges" : "Hide monthly charges";
       renderChart();
     });
 
@@ -437,23 +525,17 @@ permalink: /AllCampuses/
           const rawWaterUsage = Number((row[waterUsageIndex] || "").replace(/,/g, ""));
           const rawSewerUsage = Number((row[sewerUsageIndex] || "").replace(/,/g, ""));
           const fiscalYear = (row[fiscalYearIndex] || "").trim().toLowerCase();
-          
-          if (!campus || !month || !fiscalYear) return;
-
-          monthFY[month] = fiscalYear;
+        
 
           const waterUsage = Number.isFinite(rawWaterUsage) ? rawWaterUsage : 0;
           const sewerUsage = Number.isFinite(rawSewerUsage) ? rawSewerUsage : 0;
+          const waterCharges = parseAmount(row[waterChargesIndex]);
+          const sewerCharges = parseAmount(row[sewerChargesIndex]);
 
-          campusWaterData[campus] = campusWaterData[campus] || {};
-          campusWaterData[campus][month] = (campusWaterData[campus][month] || 0) + waterUsage;
-
-          campusSewerData[campus] = campusSewerData[campus] || {};
-          campusSewerData[campus][month] = (campusSewerData[campus][month] || 0) + sewerUsage;
-
-          monthlyCostData[campus] = monthlyCostData[campus] || {};
-          monthlyCostData[campus][month] = (monthlyCostData[campus][month] || 0)
-            + parseAmount(row[waterChargesIndex]) + parseAmount(row[sewerChargesIndex]);
+          addMonthly(campusWaterData, campus, fiscalYear, month, waterUsage);
+          addMonthly(campusSewerData, campus, fiscalYear, month, sewerUsage);
+          addMonthly(monthlyWaterCostData, campus, fiscalYear, month, waterCharges);
+          addMonthly(monthlySewerCostData, campus, fiscalYear, month, sewerCharges);
 
           fiscalData[campus] = fiscalData[campus] || {};
           fiscalData[campus][fiscalYear] = fiscalData[campus][fiscalYear] || {
@@ -461,24 +543,12 @@ permalink: /AllCampuses/
           };
           fiscalData[campus][fiscalYear].waterUsage += waterUsage;
           fiscalData[campus][fiscalYear].sewerUsage += sewerUsage;
-          fiscalData[campus][fiscalYear].water += parseAmount(row[waterChargesIndex]);
-          fiscalData[campus][fiscalYear].sewer += parseAmount(row[sewerChargesIndex]);
+          fiscalData[campus][fiscalYear].water += waterCharges;
+          fiscalData[campus][fiscalYear].sewer += sewerCharges;
         });
 
         const campuses = Object.keys(campusWaterData).sort();
         if (!campuses.length) throw new Error("No usable campus water records were found.");
-
-        Object.keys(campusWaterData).forEach(campus => {
-          campusWaterData[campus] = Object.entries(campusWaterData[campus])
-            .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
-            .map(([month, usage]) => ({ month, usage }));
-          campusSewerData[campus] = Object.entries(campusSewerData[campus] || {})
-            .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
-            .map(([month, usage]) => ({ month, usage }));
-          monthlyCostData[campus] = Object.entries(monthlyCostData[campus] || {})
-            .sort(([monthA], [monthB]) => monthA.localeCompare(monthB))
-            .map(([month, cost]) => ({ month, cost }));
-        });
 
         renderPicker(campuses);
         buildFYOptions();

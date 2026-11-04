@@ -31,7 +31,7 @@ theme: minima
 # Pages listed in the navbar
 # Graphs and Comparison are only linked from the quick links box.
 header_pages:
-  - all_campuses.markdown
+  - about.markdown
 plugins:
   - jekyll-feed
 
