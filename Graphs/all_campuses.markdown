@@ -1,37 +1,17 @@
 ---
 layout: page
 title: All Campuses
-permalink: /AllCampuses/
 ---
 
 <style>
   .post-header { display: none; }
-  #campus-picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .6em;
-    margin: 1em 0;
-  }
-  #campus-picker label {
-    cursor: pointer;
-    padding: .45em 1em;
+  #campus-picker { margin: 1em 0; }
+  #campus-picker select {
+    padding: .45em .9em;
     border: 1px solid #9ca3af;
-    border-radius: 999px;
+    border-radius: 6px;
     background: #f9fafb;
-  }
-  #campus-picker label:has(input:checked) {
-    border-color: #2563eb;
-    background: #dbeafe;
-    color: #1e3a8a;
-    font-weight: 600;
-  }
-  #campus-picker input {
-    position: absolute;
-    opacity: 0;
-  }
-  #campus-picker label:has(input:focus-visible) {
-    outline: 2px solid #2563eb;
-    outline-offset: 2px;
+    font: inherit;
   }
   #campus-chart {
     width: 100%;
@@ -48,13 +28,19 @@ permalink: /AllCampuses/
     flex-wrap: wrap;
     margin: .5em 0 0;
   }
-  #cost-toggle, #sewer-toggle {
+  #water-toggle, #cost-toggle, #sewer-toggle {
     padding: .45em .9em;
     border: 1px solid #6b7280;
     border-radius: 6px;
     background: #f9fafb;
     cursor: pointer;
     font: inherit;
+  }
+  #water-toggle[aria-pressed="true"] {
+    border-color: #1d4ed8;
+    background: #dbeafe;
+    color: #1e3a8a;
+    font-weight: 600;
   }
   #sewer-toggle[aria-pressed="true"] {
     border-color: #047857;
@@ -84,20 +70,6 @@ permalink: /AllCampuses/
   #fiscal-year-table tbody tr:nth-child(even) {
     background: #f3f4f6;
   }
-  #go-back-btn {
-    display: inline-block;
-    margin: .5em 0 0;
-    padding: .45em .9em;
-    border: 1px solid #6b7280;
-    border-radius: 6px;
-    background: #f9fafb;
-    color: #1f2937;
-    text-decoration: none;
-    font: inherit;
-  }
-  #go-back-btn:hover {
-    background: #e5e7eb;
-  }
 
   /* Floating fiscal year picker that stays beside the chart while scrolling.
      The theme's content column is 740px wide and centered, so anchor the box's
@@ -114,7 +86,6 @@ permalink: /AllCampuses/
   /* On narrow screens, collapse the picker below the navbar to keep it out of the way. */
   @media (max-width: 1100px) {
     #fy-float { top: 72px; left: 12px; right: auto; padding: 6px; }
-    #go-back-btn { margin-top: 3.5em; }
     #fy-toggle {
       display: block; padding: 8px 12px; border: 0; border-radius: 4px;
       background: transparent; color: inherit; font: inherit; cursor: pointer;
@@ -129,11 +100,14 @@ permalink: /AllCampuses/
 
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
 
-<a href="{{ '/' | relative_url }}" id="go-back-btn">Go Back</a>
 <h2>Monthly Usage by Campus</h2>
 <p>Select a campus to view its monthly water and sewer metrics.</p>
-<div id="campus-picker" role="radiogroup" aria-label="Select campus"></div>
+<div id="campus-picker">
+  <label for="campus-select"><strong>Campus: </strong></label>
+  <select id="campus-select"></select>
+</div>
 <div class="controls-row">
+  <button id="water-toggle" type="button" aria-pressed="true">Hide water usage</button>
   <button id="sewer-toggle" type="button" aria-pressed="false">Show sewer usage</button>
   <button id="cost-toggle" type="button" aria-pressed="false">Show monthly costs</button>
 </div>
@@ -161,9 +135,10 @@ permalink: /AllCampuses/
 
 <script>
   (() => {
-    const picker = document.getElementById("campus-picker");
+    const campusSelect = document.getElementById("campus-select");
     const chart = document.getElementById("campus-chart");
     const message = document.getElementById("campus-chart-message");
+    const waterToggle = document.getElementById("water-toggle");
     const sewerToggle = document.getElementById("sewer-toggle");
     const costToggle = document.getElementById("cost-toggle");
     const fiscalHeading = document.getElementById("fiscal-year-heading");
@@ -267,6 +242,18 @@ permalink: /AllCampuses/
         .sort();
     }
 
+    // How many months of a fiscal year have any usage or charges for the selected campus.
+    function monthsWithData(fy) {
+      const stores = [campusWaterData, campusSewerData, monthlyWaterCostData, monthlySewerCostData];
+      const months = new Set();
+      stores.forEach(store => {
+        Object.entries((store[selectedCampus] || {})[fy] || {}).forEach(([month, value]) => {
+          if (value) months.add(month);
+        });
+      });
+      return months.size;
+    }
+
     function renderChart() {
       const fys = selectedFYs();
       if (!fys.length) {
@@ -277,9 +264,14 @@ permalink: /AllCampuses/
       message.textContent = "";
       let costAxisRange;
 
-      const waterRecords = monthlySeries(campusWaterData, fys);
-      const traces = [
-        {
+      const showWater = waterToggle.getAttribute("aria-pressed") === "true";
+      const showSewerUsage = sewerToggle.getAttribute("aria-pressed") === "true";
+      const showCost = costToggle.getAttribute("aria-pressed") === "true";
+      const traces = [];
+
+      if (showWater) {
+        const waterRecords = monthlySeries(campusWaterData, fys);
+        traces.push({
           x: waterRecords.map(record => record.month),
           y: waterRecords.map(record => record.value),
           type: "scatter",
@@ -288,10 +280,10 @@ permalink: /AllCampuses/
           line: { color: "#2563eb", width: 2 },
           marker: { color: "#2563eb", size: 6 },
           hovertemplate: "%{y:,.0f} thousand gallons<extra>Water usage</extra>"
-        }
-      ];
+        });
+      }
 
-      if (sewerToggle.getAttribute("aria-pressed") === "true") {
+      if (showSewerUsage) {
         const sewerRecords = monthlySeries(campusSewerData, fys);
         traces.push({
           x: sewerRecords.map(record => record.month),
@@ -305,17 +297,29 @@ permalink: /AllCampuses/
         });
       }
 
-      if (costToggle.getAttribute("aria-pressed") === "true") {
-        // Water charges only, unless sewer usage is on the graph: then water + sewer charges.
-        const showSewer = sewerToggle.getAttribute("aria-pressed") === "true";
-        const costLabel = showSewer ? "Monthly cost (water + sewer)" : "Monthly cost (water)";
-        const costRecords = monthlySeries(
-          showSewer ? [monthlyWaterCostData, monthlySewerCostData] : [monthlyWaterCostData], fys);
-        // Fix the cost axis using both water-only and water + sewer values, so it
-        // doesn't rescale when sewer usage is toggled on or off.
+      if (showCost) {
+        // Charges follow the usage lines on the graph:
+        //   only water usage  -> water charges
+        //   only sewer usage  -> sewer charges
+        //   both, or neither  -> water + sewer charges
+        let costStores, costLabel;
+        if (showWater && !showSewerUsage) {
+          costStores = [monthlyWaterCostData];
+          costLabel = "Monthly cost (water)";
+        } else if (showSewerUsage && !showWater) {
+          costStores = [monthlySewerCostData];
+          costLabel = "Monthly cost (sewer)";
+        } else {
+          costStores = [monthlyWaterCostData, monthlySewerCostData];
+          costLabel = "Monthly cost (water + sewer)";
+        }
+        const costRecords = monthlySeries(costStores, fys);
+        // Fix the cost axis using the water-only, sewer-only and combined values, so it
+        // doesn't rescale when the usage lines are toggled on or off.
         const waterOnlyValues = monthlySeries([monthlyWaterCostData], fys).map(r => r.value);
+        const sewerOnlyValues = monthlySeries([monthlySewerCostData], fys).map(r => r.value);
         const combinedValues = monthlySeries([monthlyWaterCostData, monthlySewerCostData], fys).map(r => r.value);
-        const allCostValues = [0, ...waterOnlyValues, ...combinedValues];
+        const allCostValues = [0, ...waterOnlyValues, ...sewerOnlyValues, ...combinedValues];
         const costLow = Math.min(...allCostValues);
         const costHigh = Math.max(...allCostValues);
         const costPad = (costHigh - costLow) * 0.05 || 1;
@@ -333,16 +337,26 @@ permalink: /AllCampuses/
         });
       }
 
+      if (!traces.length) {
+        Plotly.purge(chart);
+        message.textContent = "Turn on at least one line to see the graph.";
+        return;
+      }
+
+      // With no usage line, the left axis has nothing to show, so hide it and
+      // let the cost axis draw the gridlines instead.
+      const showUsageAxis = showWater || showSewerUsage;
+
       Plotly.react(chart, traces, {
         title: selectedCampus + " monthly usage",
         xaxis: { title: "Month", type: "date", hoverformat: "%B %Y" },
-        yaxis: { title: "Usage (thousand gallons)", rangemode: "tozero" },
+        yaxis: { title: "Usage (thousand gallons)", rangemode: "tozero", visible: showUsageAxis },
         yaxis2: {
           title: {text: "Monthly charges (USD)", standoff: 10},
           overlaying: "y",
           side: "right",
           rangemode: "tozero",
-          showgrid: false,
+          showgrid: !showUsageAxis,
           automargin: true,
           ...(costAxisRange ? { range: costAxisRange } : {})
         },
@@ -435,14 +449,18 @@ permalink: /AllCampuses/
 
     // One bubble (radio button) for "All" plus one per fiscal year that has data for the
     // selected campus, newest first. When switching campuses the current choice is kept if
-    // the new campus has it ("All" always carries over); otherwise the newest year is selected.
+    // the new campus has it ("All" always carries over); otherwise the newest full year is selected.
     function buildFYOptions() {
       const available = campusFYs();
       const previous = document.querySelector('input[name="campus-fy"]:checked');
       const previousValue = previous ? previous.value : null;
+      // Default to the newest fiscal year with all 12 months of data, so a partial
+      // year (like the current one) doesn't make the graph look sparse.
+      const newestFull = available.slice().reverse().find(fy => monthsWithData(fy) >= 12);
+      const fallback = newestFull || available[available.length - 1];
       const selected = previousValue === "all" || available.includes(previousValue)
         ? previousValue
-        : available[available.length - 1];
+        : fallback;
       fyContainer.replaceChildren();
 
       const options = available.length ? ["all", ...available.slice().reverse()] : [];
@@ -458,23 +476,30 @@ permalink: /AllCampuses/
     }
 
     function renderPicker(campuses) {
-      campuses.forEach((campus, index) => {
-        const label = document.createElement("label");
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.name = "campus";
-        input.value = campus;
-        input.checked = index === 0;
-        input.addEventListener("change", () => {
-          selectedCampus = input.value;
-          buildFYOptions();
-          renderAll();
-        });
-        label.append(input, campus);
-        picker.append(label);
+      campuses.forEach(campus => {
+        const option = document.createElement("option");
+        option.value = campus;
+        option.textContent = campus;
+        campusSelect.append(option);
       });
-      selectedCampus = campuses[0];
+      // Default to Manoa ("Manoa", "UH Manoa", "Mānoa"...); fall back to the first campus.
+      const plain = name => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      selectedCampus = campuses.find(c => /manoa/i.test(plain(c))) || campuses[0];
+      campusSelect.value = selectedCampus;
+
+      campusSelect.addEventListener("change", () => {
+        selectedCampus = campusSelect.value;
+        buildFYOptions();
+        renderAll();
+      });
     }
+
+    waterToggle.addEventListener("click", () => {
+      const isPressed = waterToggle.getAttribute("aria-pressed") === "true";
+      waterToggle.setAttribute("aria-pressed", String(!isPressed));
+      waterToggle.textContent = isPressed ? "Show water usage" : "Hide water usage";
+      renderChart();
+    });
 
     sewerToggle.addEventListener("click", () => {
       const isPressed = sewerToggle.getAttribute("aria-pressed") === "true";
