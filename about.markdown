@@ -30,7 +30,7 @@ This site is built with [Jekyll](https://jekyllrb.com/) and hosted on [GitHub Pa
 ## Contact
 
 <div class="about-links">
-  <a href="uhenergy@hawaii.edu">Email</a>
+  <a href="mailto:uhenergy@hawaii.edu">Email Us!</a>
   <a href="https://seagrant.soest.hawaii.edu">Sea Grant Website</a>
 </div>
 
